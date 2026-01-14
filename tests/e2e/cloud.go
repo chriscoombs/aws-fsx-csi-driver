@@ -86,10 +86,29 @@ func (c *cloud) createS3Bucket(name string, region string) error {
 
 	ctx := context.Background()
 	_, err := c.s3client.CreateBucket(ctx, request)
-	if err != nil {
-		return err
+	return err
+}
+
+func (c *cloud) isBucketAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
 	}
-	return nil
+	// Check if error message contains BucketAlreadyExists or BucketAlreadyOwnedByYou
+	errStr := err.Error()
+	return contains(errStr, "BucketAlreadyExists") || contains(errStr, "BucketAlreadyOwnedByYou")
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsMiddle(s, substr)))
+}
+
+func containsMiddle(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *cloud) deleteS3Bucket(name string) error {
