@@ -17,6 +17,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -95,20 +96,7 @@ func (c *cloud) isBucketAlreadyExistsError(err error) bool {
 	}
 	// Check if error message contains BucketAlreadyExists or BucketAlreadyOwnedByYou
 	errStr := err.Error()
-	return contains(errStr, "BucketAlreadyExists") || contains(errStr, "BucketAlreadyOwnedByYou")
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsMiddle(s, substr)))
-}
-
-func containsMiddle(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(errStr, "BucketAlreadyExists") || strings.Contains(errStr, "BucketAlreadyOwnedByYou")
 }
 
 func (c *cloud) deleteS3Bucket(name string) error {
