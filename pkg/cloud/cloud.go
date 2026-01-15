@@ -283,6 +283,7 @@ func (c *cloud) CreateFileSystem(ctx context.Context, volumeName string, fileSys
 	mountName := "fsx"
 	perUnitStorageThroughput := int32(0)
 	deploymentType := ""
+	capacityGiB := int32(0)
 
 	if output.FileSystem.LustreConfiguration != nil {
 		if output.FileSystem.LustreConfiguration.MountName != nil {
@@ -294,9 +295,13 @@ func (c *cloud) CreateFileSystem(ctx context.Context, volumeName string, fileSys
 		deploymentType = string(output.FileSystem.LustreConfiguration.DeploymentType)
 	}
 
+	if output.FileSystem.StorageCapacity != nil {
+		capacityGiB = *output.FileSystem.StorageCapacity
+	}
+
 	fs = &FileSystem{
 		FileSystemId:             *output.FileSystem.FileSystemId,
-		CapacityGiB:              *output.FileSystem.StorageCapacity,
+		CapacityGiB:              capacityGiB,
 		DnsName:                  *output.FileSystem.DNSName,
 		MountName:                mountName,
 		StorageType:              string(output.FileSystem.StorageType),
@@ -375,6 +380,7 @@ func (c *cloud) DescribeFileSystem(ctx context.Context, fileSystemId string) (*F
 	mountName := "fsx"
 	perUnitStorageThroughput := int32(0)
 	deploymentType := ""
+	capacityGiB := int32(0)
 
 	if fs.LustreConfiguration != nil {
 		if fs.LustreConfiguration.MountName != nil {
@@ -386,9 +392,13 @@ func (c *cloud) DescribeFileSystem(ctx context.Context, fileSystemId string) (*F
 		deploymentType = string(fs.LustreConfiguration.DeploymentType)
 	}
 
+	if fs.StorageCapacity != nil {
+		capacityGiB = *fs.StorageCapacity
+	}
+
 	return &FileSystem{
 		FileSystemId:             *fs.FileSystemId,
-		CapacityGiB:              *fs.StorageCapacity,
+		CapacityGiB:              capacityGiB,
 		DnsName:                  *fs.DNSName,
 		MountName:                mountName,
 		StorageType:              string(fs.StorageType),
@@ -552,6 +562,7 @@ func (c *cloud) pollFileSystems() {
 					mountName := "fsx"
 					perUnitStorageThroughput := int32(0)
 					deploymentType := ""
+					capacityGiB := int32(0)
 
 					if fs.LustreConfiguration != nil {
 						if fs.LustreConfiguration.MountName != nil {
@@ -563,9 +574,19 @@ func (c *cloud) pollFileSystems() {
 						deploymentType = string(fs.LustreConfiguration.DeploymentType)
 					}
 
+					if fs.StorageCapacity != nil {
+						capacityGiB = *fs.StorageCapacity
+					}
+
+					// Skip filesystems with missing required fields
+					if fs.FileSystemId == nil || fs.DNSName == nil {
+						klog.V(4).InfoS("pollFileSystems: skipping filesystem with missing required fields", "volumeName", volumeName)
+						continue
+					}
+
 					newCache[volumeName] = &FileSystem{
 						FileSystemId:             *fs.FileSystemId,
-						CapacityGiB:              *fs.StorageCapacity,
+						CapacityGiB:              capacityGiB,
 						DnsName:                  *fs.DNSName,
 						MountName:                mountName,
 						StorageType:              string(fs.StorageType),
