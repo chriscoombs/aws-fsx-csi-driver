@@ -222,31 +222,36 @@ func (d *controllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 		// Filesystem exists, skip creation
 		klog.V(2).InfoS("Found existing filesystem",
 			"volumeName", volName, "fsId", existingFS.FileSystemId)
-		capRange := req.GetCapacityRange()
-		if capRange != nil && capRange.GetRequiredBytes() > 0 {
-			// Calculate what the requested size WOULD BE after rounding
-			volumeParams := req.GetParameters()
-			deploymentType := volumeParams[volumeParamsDeploymentType]
-			storageType := volumeParams[volumeParamsStorageType]
+		
+		volumeParams := req.GetParameters()
+		storageType := volumeParams[volumeParamsStorageType]
+		
+		// For INTELLIGENT_TIERING, skip capacity comparison since AWS manages capacity automatically
+		if storageType != "INTELLIGENT_TIERING" {
+			capRange := req.GetCapacityRange()
+			if capRange != nil && capRange.GetRequiredBytes() > 0 {
+				// Calculate what the requested size WOULD BE after rounding
+				deploymentType := volumeParams[volumeParamsDeploymentType]
 
-			var perUnitThroughput int32 = 0
-			if val, ok := volumeParams[volumeParamsPerUnitStorageThroughput]; ok {
-				n, err := strconv.ParseInt(val, 10, 32)
-				if err == nil {
-					perUnitThroughput = int32(n)
+				var perUnitThroughput int32 = 0
+				if val, ok := volumeParams[volumeParamsPerUnitStorageThroughput]; ok {
+					n, err := strconv.ParseInt(val, 10, 32)
+					if err == nil {
+						perUnitThroughput = int32(n)
+					}
 				}
-			}
 
-			// Round the requested size using the same logic as creation
-			roundedSizeGiB := util.RoundUpVolumeSize(capRange.GetRequiredBytes(), deploymentType, storageType, perUnitThroughput)
-			roundedSizeInt32, err := util.ConvertToInt32(roundedSizeGiB)
-			if err != nil {
-				return nil, status.Errorf(codes.OutOfRange, "Request storage capacity %d GiB is too large", roundedSizeGiB)
-			}
+				// Round the requested size using the same logic as creation
+				roundedSizeGiB := util.RoundUpVolumeSize(capRange.GetRequiredBytes(), deploymentType, storageType, perUnitThroughput)
+				roundedSizeInt32, err := util.ConvertToInt32(roundedSizeGiB)
+				if err != nil {
+					return nil, status.Errorf(codes.OutOfRange, "Request storage capacity %d GiB is too large", roundedSizeGiB)
+				}
 
-			// Compare rounded requested size with existing size
-			if existingFS.CapacityGiB != roundedSizeInt32 {
-				return nil, status.Error(codes.AlreadyExists, cloud.ErrFsExistsDiffSize.Error())
+				// Compare rounded requested size with existing size
+				if existingFS.CapacityGiB != roundedSizeInt32 {
+					return nil, status.Error(codes.AlreadyExists, cloud.ErrFsExistsDiffSize.Error())
+				}
 			}
 		}
 		fs = existingFS
@@ -447,6 +452,23 @@ func (d *controllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 	err = d.cloud.WaitForFileSystemAvailable(ctx, fs.FileSystemId)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Filesystem is not ready: %v", err)
+	}
+
+	// For INTELLIGENT_TIERING, AWS doesn't return StorageCapacity, so we need to use the requested capacity
+	// from the PVC to satisfy Kubernetes PV/PVC binding requirements
+	if fs.StorageType == "INTELLIGENT_TIERING" && fs.CapacityGiB == 0 {
+		capRange := req.GetCapacityRange()
+		if capRange != nil && capRange.GetRequiredBytes() > 0 {
+			// Convert the requested bytes to GiB for the response
+			requestedGiB := capRange.GetRequiredBytes() / (1024 * 1024 * 1024)
+			if requestedGiB == 0 {
+				requestedGiB = 1 // Minimum 1 GiB
+			}
+			fs.CapacityGiB = int32(requestedGiB)
+		} else {
+			// Use default if no capacity was requested
+			fs.CapacityGiB = cloud.DefaultVolumeSize
+		}
 	}
 
 	return newCreateVolumeResponse(fs), nil
