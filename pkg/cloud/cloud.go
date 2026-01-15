@@ -281,13 +281,17 @@ func (c *cloud) CreateFileSystem(ctx context.Context, volumeName string, fileSys
 	}
 
 	mountName := "fsx"
-	if output.FileSystem.LustreConfiguration.MountName != nil {
-		mountName = *output.FileSystem.LustreConfiguration.MountName
-	}
-
 	perUnitStorageThroughput := int32(0)
-	if output.FileSystem.LustreConfiguration.PerUnitStorageThroughput != nil {
-		perUnitStorageThroughput = *output.FileSystem.LustreConfiguration.PerUnitStorageThroughput
+	deploymentType := ""
+
+	if output.FileSystem.LustreConfiguration != nil {
+		if output.FileSystem.LustreConfiguration.MountName != nil {
+			mountName = *output.FileSystem.LustreConfiguration.MountName
+		}
+		if output.FileSystem.LustreConfiguration.PerUnitStorageThroughput != nil {
+			perUnitStorageThroughput = *output.FileSystem.LustreConfiguration.PerUnitStorageThroughput
+		}
+		deploymentType = string(output.FileSystem.LustreConfiguration.DeploymentType)
 	}
 
 	fs = &FileSystem{
@@ -296,7 +300,7 @@ func (c *cloud) CreateFileSystem(ctx context.Context, volumeName string, fileSys
 		DnsName:                  *output.FileSystem.DNSName,
 		MountName:                mountName,
 		StorageType:              string(output.FileSystem.StorageType),
-		DeploymentType:           string(output.FileSystem.LustreConfiguration.DeploymentType),
+		DeploymentType:           deploymentType,
 		PerUnitStorageThroughput: perUnitStorageThroughput,
 	}
 
@@ -369,13 +373,17 @@ func (c *cloud) DescribeFileSystem(ctx context.Context, fileSystemId string) (*F
 	}
 
 	mountName := "fsx"
-	if fs.LustreConfiguration.MountName != nil {
-		mountName = *fs.LustreConfiguration.MountName
-	}
-
 	perUnitStorageThroughput := int32(0)
-	if fs.LustreConfiguration.PerUnitStorageThroughput != nil {
-		perUnitStorageThroughput = *fs.LustreConfiguration.PerUnitStorageThroughput
+	deploymentType := ""
+
+	if fs.LustreConfiguration != nil {
+		if fs.LustreConfiguration.MountName != nil {
+			mountName = *fs.LustreConfiguration.MountName
+		}
+		if fs.LustreConfiguration.PerUnitStorageThroughput != nil {
+			perUnitStorageThroughput = *fs.LustreConfiguration.PerUnitStorageThroughput
+		}
+		deploymentType = string(fs.LustreConfiguration.DeploymentType)
 	}
 
 	return &FileSystem{
@@ -384,7 +392,7 @@ func (c *cloud) DescribeFileSystem(ctx context.Context, fileSystemId string) (*F
 		DnsName:                  *fs.DNSName,
 		MountName:                mountName,
 		StorageType:              string(fs.StorageType),
-		DeploymentType:           string(fs.LustreConfiguration.DeploymentType),
+		DeploymentType:           deploymentType,
 		PerUnitStorageThroughput: perUnitStorageThroughput,
 	}, nil
 }
@@ -542,13 +550,17 @@ func (c *cloud) pollFileSystems() {
 
 				if volumeName != "" {
 					mountName := "fsx"
-					if fs.LustreConfiguration.MountName != nil {
-						mountName = *fs.LustreConfiguration.MountName
-					}
-
 					perUnitStorageThroughput := int32(0)
-					if fs.LustreConfiguration.PerUnitStorageThroughput != nil {
-						perUnitStorageThroughput = *fs.LustreConfiguration.PerUnitStorageThroughput
+					deploymentType := ""
+
+					if fs.LustreConfiguration != nil {
+						if fs.LustreConfiguration.MountName != nil {
+							mountName = *fs.LustreConfiguration.MountName
+						}
+						if fs.LustreConfiguration.PerUnitStorageThroughput != nil {
+							perUnitStorageThroughput = *fs.LustreConfiguration.PerUnitStorageThroughput
+						}
+						deploymentType = string(fs.LustreConfiguration.DeploymentType)
 					}
 
 					newCache[volumeName] = &FileSystem{
@@ -557,7 +569,7 @@ func (c *cloud) pollFileSystems() {
 						DnsName:                  *fs.DNSName,
 						MountName:                mountName,
 						StorageType:              string(fs.StorageType),
-						DeploymentType:           string(fs.LustreConfiguration.DeploymentType),
+						DeploymentType:           deploymentType,
 						PerUnitStorageThroughput: perUnitStorageThroughput,
 					}
 				}
