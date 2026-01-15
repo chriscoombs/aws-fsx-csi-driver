@@ -368,9 +368,14 @@ func (d *controllerService) CreateVolume(ctx context.Context, req *csi.CreateVol
 				fsOptions.DeploymentType = "PERSISTENT_2"
 			}
 
+			// Set metadata configuration mode to USER_PROVISIONED for INTELLIGENT_TIERING
+			// This is required by AWS FSx API when metadata configuration is specified
+			if fsOptions.MetadataConfigurationMode == "" {
+				fsOptions.MetadataConfigurationMode = "USER_PROVISIONED"
+			}
+
 			if fsOptions.MetadataIops == 0 {
 				fsOptions.MetadataIops = 6000
-				fsOptions.MetadataConfigurationMode = "USER_PROVISIONED"
 			}
 
 			// Parse and set throughputCapacity (required for INTELLIGENT_TIERING)
