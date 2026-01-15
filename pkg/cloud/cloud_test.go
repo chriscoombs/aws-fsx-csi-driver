@@ -1673,6 +1673,118 @@ func TestWaitForFileSystemResize(t *testing.T) {
 	}
 }
 
+// Feature: intelligent-tiering, Property 6: Storage Capacity Exclusion
+// For any INTELLIGENT_TIERING filesystem creation request, the driver SHALL NOT include
+// StorageCapacity in the AWS API request, regardless of whether a storage capacity was
+// specified in the PVC.
+// Validates: Requirements 1.3, 5.2
+func TestCreateFileSystem_IntelligentTiering_StorageCapacityExclusion(t *testing.T) {
+	var (
+		volumeName       = "volumeName"
+		fileSystemId     = "fs-1234"
+		subnetId         = "subnet-056da83524edbe641"
+		securityGroupIds = []string{"sg-086f61ea73388fb6b"}
+		dnsname          = "test.fsx.us-west-2.amazoawd.com"
+		mountName        = "fsx"
+	)
+
+	testCases := []struct {
+		name              string
+		capacityGiB       int32
+		expectCapacitySet bool
+	}{
+		{
+			name:              "INTELLIGENT_TIERING with zero capacity",
+			capacityGiB:       0,
+			expectCapacitySet: false,
+		},
+		{
+			name:              "INTELLIGENT_TIERING with 1200 GiB capacity",
+			capacityGiB:       1200,
+			expectCapacitySet: false,
+		},
+		{
+			name:              "INTELLIGENT_TIERING with 4800 GiB capacity",
+			capacityGiB:       4800,
+			expectCapacitySet: false,
+		},
+		{
+			name:              "INTELLIGENT_TIERING with 10000 GiB capacity",
+			capacityGiB:       10000,
+			expectCapacitySet: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+
+			mockFSx := mocks.NewMockFSx(mockCtl)
+			c := &cloud{
+				fsx:         mockFSx,
+				volumeCache: make(map[string]*FileSystem),
+			}
+
+			req := &FileSystemOptions{
+				CapacityGiB:            tc.capacityGiB,
+				SubnetId:               subnetId,
+				SecurityGroupIds:       securityGroupIds,
+				StorageType:            "INTELLIGENT_TIERING",
+				DeploymentType:         string(types.LustreDeploymentTypePersistent2),
+				ThroughputCapacity:     4000,
+				DataReadCacheSizingMode: "PROPORTIONAL_TO_THROUGHPUT_CAPACITY",
+			}
+
+			output := &fsx.CreateFileSystemOutput{
+				FileSystem: &types.FileSystem{
+					FileSystemId:    aws.String(fileSystemId),
+					StorageType:     types.StorageTypeIntelligentTiering,
+					StorageCapacity: aws.Int32(1200), // AWS returns a capacity even for INTELLIGENT_TIERING
+					DNSName:         aws.String(dnsname),
+					LustreConfiguration: &types.LustreFileSystemConfiguration{
+						DeploymentType:     types.LustreDeploymentTypePersistent2,
+						MountName:          aws.String(mountName),
+						ThroughputCapacity: aws.Int32(4000),
+					},
+				},
+			}
+
+			ctx := context.Background()
+
+			// Capture the input to verify StorageCapacity is not set
+			mockFSx.EXPECT().CreateFileSystem(gomock.Eq(ctx), gomock.Any()).DoAndReturn(
+				func(ctx context.Context, input *fsx.CreateFileSystemInput, opts ...func(*fsx.Options)) (*fsx.CreateFileSystemOutput, error) {
+					// Property validation: StorageCapacity must NOT be set for INTELLIGENT_TIERING
+					if input.StorageCapacity != nil {
+						t.Errorf("StorageCapacity should not be set for INTELLIGENT_TIERING, but got: %d", *input.StorageCapacity)
+					}
+
+					// Verify INTELLIGENT_TIERING storage type is set
+					if input.StorageType != types.StorageTypeIntelligentTiering {
+						t.Errorf("StorageType should be INTELLIGENT_TIERING, but got: %v", input.StorageType)
+					}
+
+					return output, nil
+				},
+			)
+
+			resp, err := c.CreateFileSystem(ctx, volumeName, req)
+			if err != nil {
+				t.Fatalf("CreateFileSystem failed: %v", err)
+			}
+
+			if resp == nil {
+				t.Fatal("resp is nil")
+			}
+
+			if resp.FileSystemId != fileSystemId {
+				t.Fatalf("FileSystemId mismatch. actual: %v expected: %v", resp.FileSystemId, fileSystemId)
+			}
+		})
+	}
+}
+
 func TestIsBadRequestUpdateInProgress(t *testing.T) {
 	testCases := []struct {
 		name     string

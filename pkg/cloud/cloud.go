@@ -106,6 +106,9 @@ type FileSystemOptions struct {
 	EfaEnabled                    bool
 	MetadataConfigurationMode     string
 	MetadataIops                  int32
+	ThroughputCapacity            int32
+	DataReadCacheSizingMode       string
+	DataReadCacheSizeGiB          int32
 }
 
 // FSx abstracts FSx client to facilitate its mocking.
@@ -217,6 +220,19 @@ func (c *cloud) CreateFileSystem(ctx context.Context, volumeName string, fileSys
 		}
 		lustreConfiguration.MetadataConfiguration = metadataConfiguration
 	}
+
+	if fileSystemOptions.ThroughputCapacity != 0 {
+		lustreConfiguration.ThroughputCapacity = aws.Int32(fileSystemOptions.ThroughputCapacity)
+	}
+
+	if fileSystemOptions.DataReadCacheSizingMode != "" {
+		dataReadCacheConfiguration := &types.LustreReadCacheConfiguration{}
+		dataReadCacheConfiguration.SizingMode = types.LustreReadCacheSizingMode(fileSystemOptions.DataReadCacheSizingMode)
+		if fileSystemOptions.DataReadCacheSizeGiB != 0 {
+			dataReadCacheConfiguration.SizeGiB = aws.Int32(fileSystemOptions.DataReadCacheSizeGiB)
+		}
+		lustreConfiguration.DataReadCacheConfiguration = dataReadCacheConfiguration
+	}
 	var tags = []types.Tag{
 		{
 			Key:   aws.String(VolumeNameTagKey),
@@ -239,10 +255,14 @@ func (c *cloud) CreateFileSystem(ctx context.Context, volumeName string, fileSys
 		ClientRequestToken:  aws.String(volumeName),
 		FileSystemType:      "LUSTRE",
 		LustreConfiguration: lustreConfiguration,
-		StorageCapacity:     aws.Int32(fileSystemOptions.CapacityGiB),
 		SubnetIds:           []string{fileSystemOptions.SubnetId},
 		SecurityGroupIds:    fileSystemOptions.SecurityGroupIds,
 		Tags:                tags,
+	}
+
+	// Only set StorageCapacity if not INTELLIGENT_TIERING
+	if fileSystemOptions.StorageType != "INTELLIGENT_TIERING" {
+		input.StorageCapacity = aws.Int32(fileSystemOptions.CapacityGiB)
 	}
 
 	if fileSystemOptions.FileSystemTypeVersion != "" {
